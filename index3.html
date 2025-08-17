@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Otomatisasi Ruangan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'system': ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    },
+                    colors: {
+                        'ios-blue': '#007AFF',
+                        'ios-green': '#34C759',
+                        'ios-red': '#FF3B30',
+                        'ios-orange': '#FF9500',
+                        'ios-yellow': '#FFCC00',
+                        'ios-purple': '#AF52DE',
+                        'ios-gray': '#8E8E93',
+                        'mac-sidebar': '#F5F5F7',
+                        'mac-bg': '#FAFAFA',
+                    },
+                    backdropBlur: {
+                        'ios': '20px',
+                    },
+                    boxShadow: {
+                        'ios': '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
+                        'ios-card': '0 4px 16px rgba(0, 0, 0, 0.1)',
+                        'mac': '0 2px 16px rgba(0, 0, 0, 0.1)',
+                    },
+                    borderRadius: {
+                        'ios': '12px',
+                        'mac': '8px',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for webkit browsers */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        /* iOS style glass effect */
+        .glass-effect {
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        /* Smooth transitions */
+        .smooth-transition {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* iOS style button press effect */
+        .ios-button:active {
+            transform: scale(0.96);
+        }
+
+        /* Mac style hover effects */
+        @media (min-width: 768px) {
+            .mac-hover:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            }
+        }
+    </style>
+</head>
+<body class="font-system bg-gray-50 md:bg-mac-bg min-h-screen">
+    <!-- Navigation Bar -->
+    <nav class="sticky top-0 z-50 glass-effect border-b border-gray-200/50 md:bg-white/80">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16 md:h-14">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 bg-gradient-to-br from-ios-blue to-ios-purple rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 8a1 1 0 011-1h12a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1v-4z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <h1 class="text-lg md:text-base font-semibold text-gray-900">
+                        <span class="md:hidden">Smart Room</span>
+                        <span class="hidden md:inline">Otomatisasi Ruangan</span>
+                    </h1>
+                </div>
+                
+                <!-- Menu Navigasi -->
+                <div class="flex items-center space-x-4">
+                    <button id="dashboardNav" class="px-3 py-1 rounded-md bg-ios-blue text-white text-sm font-medium smooth-transition">
+                        Dashboard
+                    </button>
+                    <button id="tableNav" class="px-3 py-1 rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm font-medium smooth-transition">
+                        Tabel Data
+                    </button>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <div class="w-2 h-2 rounded-full bg-red-500" id="connectionIndicator"></div>
+                    <span class="text-sm text-gray-600 hidden sm:inline" id="connectionStatus">Menghubungkan...</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Dashboard Section -->
+    <main id="dashboardSection" class="max-w-7xl mx-auto p-4 space-y-6">
+        <!-- Status Overview Cards - iOS Style Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
+            <!-- Lampu Status -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-4 smooth-transition mac-hover">
+                <div class="flex flex-col items-center text-center">
+                    <div class="w-10 h-10 md:w-8 md:h-8 rounded-full bg-yellow-100 flex items-center justify-center mb-2">
+                        <svg class="w-6 h-6 md:w-5 md:h-5 text-yellow-600" id="lampuIcon" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.477.859h4z"/>
+                        </svg>
+                    </div>
+                    <p class="text-xs md:text-sm font-medium text-gray-600 mb-1">Lampu</p>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800" id="statusLampu">Unknown</span>
+                </div>
+            </div>
+
+            <!-- AC Status -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-4 smooth-transition mac-hover">
+                <div class="flex flex-col items-center text-center">
+                    <div class="w-10 h-10 md:w-8 md:h-8 rounded-full bg-blue-100 flex items-center justify-center mb-2">
+                        <svg class="w-6 h-6 md:w-5 md:h-5 text-blue-600" id="acIcon" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5.05 3.636a1 1 0 010 1.414 7 7 0 000 9.9 1 1 0 11-1.414 1.414 9 9 0 010-12.728 1 1 0 011.414 0zm9.9 0a1 1 0 011.414 0 9 9 0 010 12.728 1 1 0 11-1.414-1.414 7 7 0 000-9.9 1 1 0 010-1.414zM7.879 6.464a1 1 0 010 1.414 3 3 0 000 4.243 1 1 0 11-1.415 1.414 5 5 0 010-7.07 1 1 0 011.415 0zm4.242 0a1 1 0 011.415 0 5 5 0 010 7.072 1 1 0 01-1.415-1.415 3 3 0 000-4.242 1 1 0 010-1.415zM10 8a2 2 0 100 4 2 2 0 000-4z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <p class="text-xs md:text-sm font-medium text-gray-600 mb-1">AC</p>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800" id="statusAC">Unknown</span>
+                </div>
+            </div>
+
+            <!-- Temperature Status -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-4 smooth-transition mac-hover">
+                <div class="flex flex-col items-center text-center">
+                    <div class="w-10 h-10 md:w-8 md:h-8 rounded-full bg-red-100 flex items-center justify-center mb-2">
+                        <svg class="w-6 h-6 md:w-5 md:h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 2a4 4 0 00-4 4v4a2 2 0 00-1 1.732V12a5 5 0 0010 0v-.268A2 2 0 0014 10V6a4 4 0 00-4-4zM8 6a2 2 0 114 0v4h-4V6zm2 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <p class="text-xs md:text-sm font-medium text-gray-600 mb-1">Suhu AC</p>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800" id="statusSuhuAC">--°C</span>
+                </div>
+            </div>
+
+            <!-- Mode Status -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-4 smooth-transition mac-hover">
+                <div class="flex flex-col items-center text-center">
+                    <div class="w-10 h-10 md:w-8 md:h-8 rounded-full bg-purple-100 flex items-center justify-center mb-2">
+                        <svg class="w-6 h-6 md:w-5 md:h-5 text-purple-600" id="modeIcon" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <p class="text-xs md:text-sm font-medium text-gray-600 mb-1">Mode</p>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800" id="statusMode">Unknown</span>
+                </div>
+            </div>
+
+            <!-- Pump Status -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-4 smooth-transition mac-hover">
+                <div class="flex flex-col items-center text-center">
+                    <div class="w-10 h-10 md:w-8 md:h-8 rounded-full bg-green-100 flex items-center justify-center mb-2">
+                        <svg class="w-6 h-6 md:w-5 md:h-5 text-green-600" id="pumpIcon" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm3 5a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H8a1 1 0 01-1-1V7zm2 2v2h2V9H9z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <p class="text-xs md:text-sm font-medium text-gray-600 mb-1">Pompa</p>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800" id="statusPompa">Unknown</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sensor Data -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Temperature Sensor -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-6 smooth-transition mac-hover">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">Suhu Ruangan</h3>
+                    <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 2a4 4 0 00-4 4v4a2 2 0 00-1 1.732V12a5 5 0 0010 0v-.268A2 2 0 0014 10V6a4 4 0 00-4-4zM8 6a2 2 0 114 0v4h-4V6zm2 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-4xl md:text-3xl font-bold text-red-600 mb-2" id="suhu">--</div>
+                    <p class="text-gray-500">°Celsius</p>
+                </div>
+            </div>
+
+            <!-- Light Sensor -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-6 smooth-transition mac-hover">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">Tingkat Cahaya</h3>
+                    <div class="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-4xl md:text-3xl font-bold text-yellow-600 mb-2" id="cahaya">--</div>
+                    <p class="text-gray-500">Lux</p>
+                </div>
+            </div>
+
+            <!-- Humidity Sensor -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-6 smooth-transition mac-hover">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">Kelembaban</h3>
+                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.93 3.93a10 10 0 0110.14 0c1.95 1.95 2.03 5.07.22 7.03-.63.69-1.43 1.35-2.39 1.97C11.5 13.76 10 14.5 10 14.5s-1.5-.74-2.91-1.57c-.96-.62-1.76-1.28-2.39-1.97-1.81-1.96-1.73-5.08.22-7.03zm7.79 11.02a.75.75 0 00-1.06 0c-.23.23-.48.45-.74.66a.75.75 0 01-1.06-1.06c.26-.21.51-.43.74-.66a.75.75 0 011.06 0c.23.23.48.45.74.66a.75.75 0 010 1.06z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-4xl md:text-3xl font-bold text-blue-600 mb-2" id="kelembaban">--</div>
+                    <p class="text-gray-500">%</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PZEM Data -->
+        <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-6 smooth-transition mac-hover">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Data PZEM</h3>
+                <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 2a8 8 0 100-16 8 8 0 000 16zm1 13a1 1 0 11-2 0 1 1 0 012 0zm-1-2a1 1 0 01-1-1V7a1 1 0 112 0v5a1 1 0 01-1 1z" clip-rule="evenodd"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="text-center">
+                    <div class="text-2xl md:text-xl font-bold text-orange-600 mb-2" id="pzemTegangan">--</div>
+                    <p class="text-gray-500 text-sm">Volt</p>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl md:text-xl font-bold text-orange-600 mb-2" id="pzemArus">--</div>
+                    <p class="text-gray-500 text-sm">Ampere</p>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl md:text-xl font-bold text-orange-600 mb-2" id="pzemDaya">--</div>
+                    <p class="text-gray-500 text-sm">Watt</p>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl md:text-xl font-bold text-orange-600 mb-2" id="pzemEnergi">--</div>
+                    <p class="text-gray-500 text-sm">kWh</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panels -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Manual Controls -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-6 smooth-transition mac-hover">
+                <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-ios-blue" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38Z" clip-rule="evenodd"/>
+                    </svg>
+                    Kontrol Manual
+                </h3>
+
+                <!-- Light Controls -->
+                <div class="mb-6">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.477.859h4z"/>
+                        </svg>
+                        Kontrol Lampu
+                    </h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button class="ios-button bg-ios-green hover:bg-green-600 text-white font-medium py-3 px-4 rounded-ios md:rounded-mac smooth-transition flex items-center justify-center" onclick="kirim('lampu', 'ON')">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.477.859h4z"/>
+                            </svg>
+                            HIDUP
+                        </button>
+                        <button class="ios-button bg-ios-red hover:bg-red-600 text-white font-medium py-3 px-4 rounded-ios md:rounded-mac smooth-transition flex items-center justify-center" onclick="kirim('lampu', 'OFF')">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"/>
+                            </svg>
+                            MATI
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AC Controls -->
+                <div class="mb-6">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5.05 3.636a1 1 0 010 1.414 7 7 0 000 9.9 1 1 0 11-1.414 1.414 9 9 0 010-12.728 1 1 0 011.414 0zm9.9 0a1 1 0 011.414 0 9 9 0 010 12.728 1 1 0 11-1.414-1.414 7 7 0 000-9.9 1 1 0 010-1.414zM7.879 6.464a1 1 0 010 1.414 3 3 0 000 4.243 1 1 0 11-1.415 1.414 5 5 0 010-7.07 1 1 0 011.415 0zm4.242 0a1 1 0 011.415 0 5 5 0 010 7.072 1 1 0 01-1.415-1.415 3 3 0 000-4.242 1 1 0 010-1.415zM10 8a2 2 0 100 4 2 2 0 000-4z" clip-rule="evenodd"/>
+                        </svg>
+                        Kontrol AC
+                    </h4>
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <button class="ios-button bg-ios-green hover:bg-green-600 text-white font-medium py-3 px-4 rounded-ios md:rounded-mac smooth-transition flex items-center justify-center" onclick="kirim('ac', 'ON')">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.293l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"/>
+                            </svg>
+                            HIDUP
+                        </button>
+                        <button class="ios-button bg-ios-red hover:bg-red-600 text-white font-medium py-3 px-4 rounded-ios md:rounded-mac smooth-transition flex items-center justify-center" onclick="kirim('ac', 'OFF')">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                            </svg>
+                            MATI
+                        </button>
+                    </div>
+
+                    <!-- Temperature Control -->
+                    <div class="flex space-x-2">
+                        <div class="flex-1">
+                            <div class="relative">
+                                <input type="number" class="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-ios md:rounded-mac focus:ring-2 focus:ring-ios-blue focus:border-transparent" id="suhuAC" min="16" max="30" value="24" placeholder="Suhu AC">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 2a4 4 0 00-4 4v4a2 2 0 00-1 1.732V12a5 5 0 0010 0v-.268A2 2 0 0014 10V6a4 4 0 00-4-4zM8 6a2 2 0 114 0v4h-4V6zm2 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                                    </svg>
+                                </div>
+                                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                    <span class="text-gray-500 text-sm">°C</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="ios-button bg-ios-blue hover:bg-blue-600 text-white font-medium px-6 py-3 rounded-ios md:rounded-mac smooth-transition flex items-center" onclick="setelSuhu()">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
+                            Atur
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pump Controls -->
+                <div class="mb-6">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm3 5a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H8a1 1 0 01-1-1V7zm2 2v2h2V9H9z" clip-rule="evenodd"/>
+                        </svg>
+                        Kontrol Pompa
+                    </h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button class="ios-button bg-ios-green hover:bg-green-600 text-white font-medium py-3 px-4 rounded-ios md:rounded-mac smooth-transition flex items-center justify-center" onclick="kirim('pompa', 'ON')">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.293l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"/>
+                            </svg>
+                            HIDUP
+                        </button>
+                        <button class="ios-button bg-ios-red hover:bg-red-600 text-white font-medium py-3 px-4 rounded-ios md:rounded-mac smooth-transition flex items-center justify-center" onclick="kirim('pompa', 'OFF')">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                            </svg>
+                            MATI
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mode Controls -->
+            <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-6 smooth-transition mac-hover">
+                <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-ios-purple" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                    </svg>
+                    Mode Kontrol
+                </h3>
+
+                <div class="space-y-4">
+                    <button class="w-full ios-button bg-gradient-to-r from-ios-blue to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-4 rounded-ios md:rounded-mac smooth-transition text-left" onclick="kirim('mode', 'manual')" id="manualModeBtn">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center mr-3">
+                                <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="font-semibold text-lg">Manual</div>
+                                <div class="text-white/80 text-sm">Kontrol perangkat secara manual</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <button class="w-full ios-button bg-gradient-to-r from-ios-green to-green-600 hover:from-green-600 hover:to-green-700 text-white p-4 rounded-ios md:rounded-mac smooth-transition text-left" onclick="kirim('mode', 'otomatis')" id="autoModeBtn">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center mr-3">
+                                <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="font-semibold text-lg">Otomatis</div>
+                                <div class="text-white/80 text-sm">Sistem mengatur secara otomatis</div>
+                            </div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Threshold Settings -->
+        <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-6 smooth-transition mac-hover">
+            <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-ios-gray" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 0l-2 2a1 1 0 101.414 1.414L8 10.414l1.293 1.293a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                </svg>
+                Pengaturan Ambang Otomatis
+            </h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <!-- Temperature Threshold -->
+                <div class="border-l-4 border-ios-red bg-red-50 p-4 rounded-r-ios md:rounded-r-mac">
+                    <div class="flex items-center mb-3">
+                        <svg class="w-5 h-5 text-ios-red mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 2a4 4 0 00-4 4v4a2 2 0 00-1 1.732V12a5 5 0 0010 0v-.268A2 2 0 0014 10V6a4 4 0 00-4-4zM8 6a2 2 0 114 0v4h-4V6zm2 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                        </svg>
+                        <h4 class="font-semibold text-ios-red">Ambang Suhu</h4>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-3">AC menyala jika suhu melebihi nilai ini</p>
+                    <div class="relative">
+                        <input type="number" class="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-ios md:rounded-mac focus:ring-2 focus:ring-ios-red focus:border-transparent" id="ambangSuhu" value="28">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="w-5 h-5 text-ios-red" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 2a4 4 0 00-4 4v4a2 2 0 00-1 1.732V12a5 5 0 0010 0v-.268A2 2 0 0014 10V6a4 4 0 00-4-4zM8 6a2 2 0 114 0v4h-4V6zm2 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <span class="text-gray-500 text-sm">°C</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Light Threshold -->
+                <div class="border-l-4 border-ios-yellow bg-yellow-50 p-4 rounded-r-ios md:rounded-r-mac">
+                    <div class="flex items-center mb-3">
+                        <svg class="w-5 h-5 text-ios-yellow mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
+                        </svg>
+                        <h4 class="font-semibold text-ios-yellow">Ambang Cahaya</h4>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-3">Lampu menyala jika cahaya kurang dari nilai ini</p>
+                    <div class="relative">
+                        <input type="number" class="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-ios md:rounded-mac focus:ring-2 focus:ring-ios-yellow focus:border-transparent" id="ambangCahaya" value="800">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="w-5 h-5 text-ios-yellow" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <span class="text-gray-500 text-sm">Lux</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button class="ios-button bg-gradient-to-r from-ios-green to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold px-8 py-3 rounded-ios md:rounded-mac smooth-transition flex items-center mx-auto" onclick="setelAmbang()">
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                    Terapkan Pengaturan
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Tabel Data Section -->
+    <section id="tableSection" class="max-w-7xl mx-auto p-4 hidden">
+        <div class="bg-white rounded-ios md:rounded-mac shadow-ios md:shadow-mac p-6 smooth-transition">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-semibold text-gray-900">
+                    <svg class="w-6 h-6 inline-block mr-2 text-ios-blue" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5 4a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1V5a1 1 0 00-1-1H5zm0 2h10v7H5V6zm5 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                    </svg>
+                    Data Sensor Tersimpan
+                </h2>
+                <button id="resetDataBtn" class="ios-button bg-ios-red hover:bg-red-600 text-white font-medium py-2 px-4 rounded-ios md:rounded-mac smooth-transition flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    Reset Data
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Suhu (°C)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cahaya (Lux)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelembaban (%)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tegangan (V)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Arus (A)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Daya (W)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Energi (kWh)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sensorDataBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Data akan diisi oleh JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-4 text-center text-sm text-gray-500" id="dataCount">
+                Menampilkan 0 data sensor
+            </div>
+        </div>
+    </section>
+
+    <!-- Toast Container -->
+    <div class="fixed bottom-4 right-4 z-50 space-y-2" id="toastContainer"></div>
+
+    <script>
+        const uniqueId = '0129018201201';
+        const baseTopic = `ruangan/${uniqueId}`;
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+        let toastCount = 0;
+        let saveInterval;
+        let sensorData = [];
+
+        // Status perangkat
+        const deviceStatus = {
+            lampu: 'unknown',
+            ac: 'unknown',
+            pompa: 'unknown',
+            acSuhu: '--',
+            mode: 'unknown'
+        };
+
+        // Tampilkan toast notification iOS style
+        function showToast(message, type = 'success') {
+            const toastId = `toast-${++toastCount}`;
+            const iconClass = type === 'success' ? 'text-green-600' : 'text-red-600';
+            const bgClass = type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
+            
+            const toastHtml = `
+                <div class="toast-notification ${bgClass} border rounded-ios md:rounded-mac p-4 shadow-ios-card max-w-sm smooth-transition transform translate-x-full opacity-0" id="${toastId}">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <svg class="w-5 h-5 ${iconClass}" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="${type === 'success' ? 'M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z' : 'M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z'}" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        <div class="ml-3 flex-1">
+                            <p class="text-sm font-medium text-gray-900">${message}</p>
+                        </div>
+                        <div class="ml-4 flex-shrink-0">
+                            <button class="inline-flex text-gray-400 hover:text-gray-600" onclick="removeToast('${toastId}')">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('toastContainer').insertAdjacentHTML('beforeend', toastHtml);
+            
+            const toastElement = document.getElementById(toastId);
+            
+            // Animate in
+            setTimeout(() => {
+                toastElement.classList.remove('translate-x-full', 'opacity-0');
+                toastElement.classList.add('translate-x-0', 'opacity-100');
+            }, 100);
+            
+            // Auto remove after 4 seconds
+            setTimeout(() => {
+                removeToast(toastId);
+            }, 4000);
+        }
+
+        function removeToast(toastId) {
+            const toastElement = document.getElementById(toastId);
+            if (toastElement) {
+                toastElement.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => {
+                    toastElement.remove();
+                }, 300);
+            }
+        }
+
+        // Perbarui status perangkat
+        function updateDeviceStatus(device, status) {
+            deviceStatus[device] = status;
+            
+            switch(device) {
+                case 'lampu':
+                    const lampuIcon = document.getElementById('lampuIcon');
+                    const lampuStatus = document.getElementById('statusLampu');
+                    if (status === 'ON') {
+                        lampuIcon.className = 'w-6 h-6 md:w-5 md:h-5 text-yellow-500';
+                        lampuStatus.className = 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800';
+                        lampuStatus.textContent = 'HIDUP';
+                    } else if (status === 'OFF') {
+                        lampuIcon.className = 'w-6 h-6 md:w-5 md:h-5 text-gray-400';
+                        lampuStatus.className = 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800';
+                        lampuStatus.textContent = 'MATI';
+                    }
+                    break;
+                    
+                case 'ac':
+                    const acIcon = document.getElementById('acIcon');
+                    const acStatus = document.getElementById('statusAC');
+                    if (status === 'ON') {
+                        acIcon.className = 'w-6 h-6 md:w-5 md:h-5 text-blue-500';
+                        acStatus.className = 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800';
+                        acStatus.textContent = 'HIDUP';
+                    } else if (status === 'OFF') {
+                        acIcon.className = 'w-6 h-6 md:w-5 md:h-5 text-gray-400';
+                        acStatus.className = 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800';
+                        acStatus.textContent = 'MATI';
+                    }
+                    break;
+
+                case 'pompa':
+                    const pumpIcon = document.getElementById('pumpIcon');
+                    const pumpStatus = document.getElementById('statusPompa');
+                    if (status === 'ON') {
+                        pumpIcon.className = 'w-6 h-6 md:w-5 md:h-5 text-green-500';
+                        pumpStatus.className = 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800';
+                        pumpStatus.textContent = 'HIDUP';
+                    } else if (status === 'OFF') {
+                        pumpIcon.className = 'w-6 h-6 md:w-5 md:h-5 text-gray-400';
+                        pumpStatus.className = 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800';
+                        pumpStatus.textContent = 'MATI';
+                    }
+                    break;
+                    
+                case 'acSuhu':
+                    document.getElementById('statusSuhuAC').textContent = status + '°C';
+                    document.getElementById('suhuAC').value = status;
+                    break;
+                    
+                case 'mode':
+                    const modeIcon = document.getElementById('modeIcon');
+                    const modeStatus = document.getElementById('statusMode');
+                    const manualBtn = document.getElementById('manualModeBtn');
+                    const autoBtn = document.getElementById('autoModeBtn');
+                    
+                    if (status === 'manual') {
+                        modeIcon.className = 'w-6 h-6 md:w-5 md:h-5 text-blue-600';
+                        modeStatus.className = 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800';
+                        modeStatus.textContent = 'MANUAL';
+                        manualBtn.classList.add('ring-2', 'ring-ios-blue', 'ring-opacity-50');
+                        autoBtn.classList.remove('ring-2', 'ring-ios-green', 'ring-opacity-50');
+                    } else if (status === 'otomatis') {
+                        modeIcon.className = 'w-6 h-6 md:w-5 md:h-5 text-green-600';
+                        modeStatus.className = 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800';
+                        modeStatus.textContent = 'OTOMATIS';
+                        autoBtn.classList.add('ring-2', 'ring-ios-green', 'ring-opacity-50');
+                        manualBtn.classList.remove('ring-2', 'ring-ios-blue', 'ring-opacity-50');
+                    }
+                    break;
+            }
+        }
+
+        // Kirim perintah
+        function kirim(subTopic, pesan) {
+            const topic = `${baseTopic}/${subTopic}`;
+            client.publish(topic, pesan, { retain: true }, (err) => {
+                if (err) {
+                    showToast(`Gagal mengirim perintah ${subTopic}`, 'error');
+                } else {
+                    showToast(`${subTopic} diatur ke ${pesan}`, 'success');
+                    
+                    // Perbarui status lokal untuk UX yang lebih baik
+                    if (subTopic === 'lampu' || subTopic === 'ac' || subTopic === 'pompa') {
+                        updateDeviceStatus(subTopic, pesan);
+                    } else if (subTopic === 'mode') {
+                        updateDeviceStatus('mode', pesan);
+                    }
+                }
+            });
+        }
+
+        // Atur suhu AC
+        function setelSuhu() {
+            const suhu = document.getElementById('suhuAC').value;
+            if (suhu < 16 || suhu > 30) {
+                showToast('Suhu harus antara 16°C - 30°C', 'error');
+                return;
+            }
+            
+            client.publish(`${baseTopic}/ac_suhu`, suhu, { retain: true }, (err) => {
+                if (err) {
+                    showToast('Gagal mengatur suhu AC', 'error');
+                } else {
+                    showToast(`Suhu AC diatur ke ${suhu}°C`, 'success');
+                    updateDeviceStatus('acSuhu', suhu);
+                }
+            });
+        }
+
+        // Atur ambang batas
+        function setelAmbang() {
+            const suhu = document.getElementById('ambangSuhu').value;
+            const cahaya = document.getElementById('ambangCahaya').value;
+            
+            if (!suhu || !cahaya) {
+                showToast('Mohon isi semua nilai ambang', 'error');
+                return;
+            }
+            
+            client.publish(`${baseTopic}/ambang/suhu`, suhu, { retain: true });
+            client.publish(`${baseTopic}/ambang/cahaya`, cahaya, { retain: true });
+            
+            showToast(`Pengaturan ambang diterapkan`, 'success');
+        }
+
+        // Simpan data sensor ke localStorage
+        function saveSensorData() {
+            const suhu = document.getElementById('suhu').innerText;
+            const cahaya = document.getElementById('cahaya').innerText;
+            const kelembaban = document.getElementById('kelembaban').innerText;
+            const pzemTegangan = document.getElementById('pzemTegangan').innerText;
+            const pzemArus = document.getElementById('pzemArus').innerText;
+            const pzemDaya = document.getElementById('pzemDaya').innerText;
+            const pzemEnergi = document.getElementById('pzemEnergi').innerText;
+            
+            // Hanya simpan jika data valid
+            if (suhu !== '--' && cahaya !== '--' && kelembaban !== '--') {
+                const timestamp = new Date().toLocaleString('id-ID');
+                const data = {
+                    timestamp,
+                    suhu,
+                    cahaya,
+                    kelembaban,
+                    pzemTegangan,
+                    pzemArus,
+                    pzemDaya,
+                    pzemEnergi
+                };
+                
+                // Tambahkan ke array data
+                sensorData.push(data);
+                
+                // Simpan ke localStorage
+                localStorage.setItem('sensorData', JSON.stringify(sensorData));
+                
+                // Perbarui tabel jika sedang ditampilkan
+                if (!document.getElementById('tableSection').classList.contains('hidden')) {
+                    updateSensorTable();
+                }
+            }
+        }
+        
+        // Perbarui tabel data sensor
+        function updateSensorTable() {
+            const tbody = document.getElementById('sensorDataBody');
+            tbody.innerHTML = '';
+            
+            if (sensorData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="px-6 py-4 text-center text-gray-500">
+                            Tidak ada data sensor yang tersimpan
+                        </td>
+                    </tr>
+                `;
+                document.getElementById('dataCount').textContent = 'Menampilkan 0 data sensor';
+                return;
+            }
+            
+            // Tampilkan data terbaru di atas
+            sensorData.slice().reverse().forEach((data, index) => {
+                if (index < 50) { // Batasi 50 data terbaru
+                    const row = document.createElement('tr');
+                    row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${data.timestamp}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-red-600">${data.suhu}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-yellow-600">${data.cahaya}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600">${data.kelembaban}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-orange-600">${data.pzemTegangan}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-orange-600">${data.pzemArus}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-orange-600">${data.pzemDaya}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-orange-600">${data.pzemEnergi}</td>
+                    `;
+                    tbody.appendChild(row);
+                }
+            });
+            
+            document.getElementById('dataCount').textContent = `Menampilkan ${Math.min(sensorData.length, 50)} dari ${sensorData.length} data sensor`;
+        }
+        
+        // Reset semua data sensor
+        function resetSensorData() {
+            sensorData = [];
+            localStorage.removeItem('sensorData');
+            updateSensorTable();
+            showToast('Semua data sensor telah direset', 'success');
+        }
+        
+        // Navigasi antar halaman
+        function navigateToDashboard() {
+            document.getElementById('dashboardSection').classList.remove('hidden');
+            document.getElementById('tableSection').classList.add('hidden');
+            document.getElementById('dashboardNav').classList.replace('bg-gray-200', 'bg-ios-blue');
+            document.getElementById('dashboardNav').classList.replace('text-gray-700', 'text-white');
+            document.getElementById('tableNav').classList.replace('bg-ios-blue', 'bg-gray-200');
+            document.getElementById('tableNav').classList.replace('text-white', 'text-gray-700');
+        }
+        
+        function navigateToTable() {
+            document.getElementById('dashboardSection').classList.add('hidden');
+            document.getElementById('tableSection').classList.remove('hidden');
+            document.getElementById('dashboardNav').classList.replace('bg-ios-blue', 'bg-gray-200');
+            document.getElementById('dashboardNav').classList.replace('text-white', 'text-gray-700');
+            document.getElementById('tableNav').classList.replace('bg-gray-200', 'bg-ios-blue');
+            document.getElementById('tableNav').classList.replace('text-gray-700', 'text-white');
+            updateSensorTable();
+        }
+        
+        // Inisialisasi navigasi
+        document.getElementById('dashboardNav').addEventListener('click', navigateToDashboard);
+        document.getElementById('tableNav').addEventListener('click', navigateToTable);
+        document.getElementById('resetDataBtn').addEventListener('click', resetSensorData);
+
+        // Koneksi MQTT
+        client.on('connect', () => {
+            document.getElementById('connectionStatus').textContent = 'Terhubung';
+            document.getElementById('connectionIndicator').className = 'w-2 h-2 rounded-full bg-green-500';
+            showToast('Terhubung ke server', 'success');
+            
+            // Subscribe ke topik data sensor
+            client.subscribe(`${baseTopic}/suhu`);
+            client.subscribe(`${baseTopic}/cahaya`);
+            client.subscribe(`${baseTopic}/kelembaban`);
+            client.subscribe(`${baseTopic}/pzem/tegangan`);
+            client.subscribe(`${baseTopic}/pzem/arus`);
+            client.subscribe(`${baseTopic}/pzem/daya`);
+            client.subscribe(`${baseTopic}/pzem/energi`);
+            
+            // Subscribe ke topik status perangkat
+            client.subscribe(`${baseTopic}/status/lampu`);
+            client.subscribe(`${baseTopic}/status/ac`);
+            client.subscribe(`${baseTopic}/status/pompa`);
+            client.subscribe(`${baseTopic}/status/ac_suhu`);
+            client.subscribe(`${baseTopic}/status/mode`);
+            
+            // Subscribe ke pengaturan ambang
+            client.subscribe(`${baseTopic}/status/ambang_suhu`);
+            client.subscribe(`${baseTopic}/status/ambang_cahaya`);
+            
+            // Minta status terkini
+            setTimeout(() => {
+                client.publish(`${baseTopic}/request/status`, 'all');
+            }, 1000);
+            
+            // Load data sensor dari localStorage
+            const savedData = localStorage.getItem('sensorData');
+            if (savedData) {
+                sensorData = JSON.parse(savedData);
+            }
+            
+            // Mulai interval untuk menyimpan data sensor setiap 1 menit
+            saveInterval = setInterval(saveSensorData, 60000);
+        });
+
+        client.on('error', (err) => {
+            document.getElementById('connectionStatus').textContent = 'Terputus';
+            document.getElementById('connectionIndicator').className = 'w-2 h-2 rounded-full bg-red-500';
+            showToast('Koneksi terputus', 'error');
+        });
+
+        client.on('message', (topic, message) => {
+            const data = message.toString();
+            
+            if (topic === `${baseTopic}/suhu`) {
+                document.getElementById('suhu').innerText = data;
+            }
+            if (topic === `${baseTopic}/cahaya`) {
+                document.getElementById('cahaya').innerText = data;
+            }
+            if (topic === `${baseTopic}/kelembaban`) {
+                document.getElementById('kelembaban').innerText = data;
+            }
+            if (topic === `${baseTopic}/pzem/tegangan`) {
+                document.getElementById('pzemTegangan').innerText = parseFloat(data).toFixed(2);
+            }
+            if (topic === `${baseTopic}/pzem/arus`) {
+                document.getElementById('pzemArus').innerText = parseFloat(data).toFixed(2);
+            }
+            if (topic === `${baseTopic}/pzem/daya`) {
+                document.getElementById('pzemDaya').innerText = parseFloat(data).toFixed(2);
+            }
+            if (topic === `${baseTopic}/pzem/energi`) {
+                document.getElementById('pzemEnergi').innerText = parseFloat(data).toFixed(2);
+            }
+            
+            if (topic === `${baseTopic}/status/lampu`) {
+                updateDeviceStatus('lampu', data);
+            }
+            if (topic === `${baseTopic}/status/ac`) {
+                updateDeviceStatus('ac', data);
+            }
+            if (topic === `${baseTopic}/status/pompa`) {
+                updateDeviceStatus('pompa', data);
+            }
+            if (topic === `${baseTopic}/status/ac_suhu`) {
+                updateDeviceStatus('acSuhu', data);
+            }
+            if (topic === `${baseTopic}/status/mode`) {
+                updateDeviceStatus('mode', data);
+            }
+            
+            if (topic === `${baseTopic}/status/ambang_suhu`) {
+                document.getElementById('ambangSuhu').value = data;
+            }
+            if (topic === `${baseTopic}/status/ambang_cahaya`) {
+                document.getElementById('ambangCahaya').value = data;
+            }
+        });
+        
+        // Hentikan interval saat tab ditutup
+        window.addEventListener('beforeunload', () => {
+            clearInterval(saveInterval);
+        });
+    </script>
+</body>
+</html>
